@@ -4,12 +4,42 @@ import io
 import tempfile
 from dotenv import load_dotenv
 import google.generativeai as genai
-from emotion_detector import EmotionDetector
-from speech_processor import SpeechProcessor
-from document_processor import DocumentProcessor
-from rag_system import RAGSystem
 import time
 import threading
+
+# Try to import modules with fallbacks
+try:
+    from emotion_detector import EmotionDetector
+    EMOTION_AVAILABLE = True
+except Exception as e:
+    st.warning(f"Emotion detection not available: {e}")
+    EMOTION_AVAILABLE = False
+    EmotionDetector = None
+
+try:
+    from speech_processor import SpeechProcessor
+    SPEECH_AVAILABLE = True
+except Exception as e:
+    st.warning(f"Speech processing not available: {e}")
+    SPEECH_AVAILABLE = False
+    SpeechProcessor = None
+
+try:
+    from document_processor import DocumentProcessor
+    DOCUMENT_AVAILABLE = True
+except Exception as e:
+    st.warning(f"Document processing not available: {e}")
+    DOCUMENT_AVAILABLE = False
+    DocumentProcessor = None
+
+# Try to import RAG system, but make it optional
+try:
+    from rag_system import RAGSystem
+    RAG_AVAILABLE = True
+except Exception as e:
+    st.warning(f"RAG system not available: {e}")
+    RAG_AVAILABLE = False
+    RAGSystem = None
 
 # Load environment variables
 load_dotenv()
@@ -18,20 +48,40 @@ load_dotenv()
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'emotion_detector' not in st.session_state:
-    st.session_state.emotion_detector = EmotionDetector()
+    if EMOTION_AVAILABLE:
+        try:
+            st.session_state.emotion_detector = EmotionDetector()
+        except Exception as e:
+            st.warning(f"Emotion detector initialization failed: {e}")
+            st.session_state.emotion_detector = None
+    else:
+        st.session_state.emotion_detector = None
 if 'speech_processor' not in st.session_state:
-    try:
-        st.session_state.speech_processor = SpeechProcessor()
-    except Exception as e:
-        st.error(f"Speech processor initialization failed: {e}")
+    if SPEECH_AVAILABLE:
+        try:
+            st.session_state.speech_processor = SpeechProcessor()
+        except Exception as e:
+            st.warning(f"Speech processor initialization failed: {e}")
+            st.session_state.speech_processor = None
+    else:
         st.session_state.speech_processor = None
 if 'document_processor' not in st.session_state:
-    st.session_state.document_processor = DocumentProcessor()
+    if DOCUMENT_AVAILABLE:
+        try:
+            st.session_state.document_processor = DocumentProcessor()
+        except Exception as e:
+            st.warning(f"Document processor initialization failed: {e}")
+            st.session_state.document_processor = None
+    else:
+        st.session_state.document_processor = None
 if 'rag_system' not in st.session_state:
-    try:
-        st.session_state.rag_system = RAGSystem()
-    except Exception as e:
-        st.error(f"RAG system initialization failed: {e}")
+    if RAG_AVAILABLE:
+        try:
+            st.session_state.rag_system = RAGSystem()
+        except Exception as e:
+            st.warning(f"RAG system initialization failed: {e}")
+            st.session_state.rag_system = None
+    else:
         st.session_state.rag_system = None
 
 def main():
@@ -76,17 +126,20 @@ def main():
         if st.session_state.speech_processor:
             st.success("✅ Speech: Available")
         else:
-            st.error("❌ Speech: Unavailable")
+            st.warning("⚠️ Speech: Limited (text only)")
         
         if st.session_state.rag_system:
             st.success("✅ RAG System: Available")
             
             # Show collection stats
-            stats = st.session_state.rag_system.get_collection_stats()
-            if 'total_items' in stats:
-                st.info(f"📊 Knowledge Base: {stats['total_items']} items")
+            try:
+                stats = st.session_state.rag_system.get_collection_stats()
+                if 'total_items' in stats:
+                    st.info(f"📊 Knowledge Base: {stats['total_items']} items")
+            except:
+                st.info("📊 Knowledge Base: Available")
         else:
-            st.error("❌ RAG System: Unavailable")
+            st.warning("⚠️ RAG System: Limited (using direct AI)")
         
         # Clear chat history
         if st.button("🗑️ Clear Chat History"):
@@ -193,21 +246,45 @@ def document_analysis_interface():
         if doc_question and st.button("🔍 Search Documents"):
             search_documents(doc_question)
 
+def generate_fallback_response(user_input, emotions=None):
+    """Generate response using direct Gemini when RAG is not available"""
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Create emotion-aware prompt
+        emotion_context = ""
+        if emotions and emotions.get('dominant_emotion'):
+            emotion = emotions['dominant_emotion']
+            confidence = emotions.get('confidence', 0)
+            emotion_context = f"The user seems to be feeling {emotion} (confidence: {confidence:.2f}). "
+        
+        prompt = f"""You are EmotiBot, an empathetic AI companion. {emotion_context}Please respond compassionately and helpfully to the user's message.
+
+User message: {user_input}
+
+Please provide a caring, supportive response:"""
+        
+        response = model.generate_content(prompt)
+        return response.text
+        
+    except Exception as e:
+        return f"I'm sorry, I'm having trouble generating a response right now. Error: {str(e)}"
+
 def process_text_message(user_input):
     """Process a text message and generate response"""
     try:
         # Analyze emotions
-        emotions = st.session_state.emotion_detector.analyze_text(user_input)
+        if st.session_state.emotion_detector:
+            emotions = st.session_state.emotion_detector.analyze_text(user_input)
+        else:
+            emotions = {'dominant_emotion': 'neutral', 'confidence': 0.5}
         
         # Generate response
         if st.session_state.rag_system:
             bot_response = st.session_state.rag_system.generate_response(user_input, emotions)
         else:
-            # Fallback to direct Gemini
-            model = genai.GenerativeModel('gemini-pro')
-            prompt = f"You are EmotiBot, an empathetic AI companion. Respond compassionately to: {user_input}"
-            response = model.generate_content(prompt)
-            bot_response = response.text
+            # Use fallback response generation
+            bot_response = generate_fallback_response(user_input, emotions)
         
         # Add to chat history
         chat_entry = {
@@ -295,6 +372,10 @@ def test_speech_system():
 
 def process_uploaded_document(uploaded_file):
     """Process an uploaded document"""
+    if not st.session_state.document_processor:
+        st.error("Document processing not available")
+        return
+        
     try:
         # Read file content
         file_content = uploaded_file.read()
@@ -316,6 +397,16 @@ def process_uploaded_document(uploaded_file):
         st.subheader("📄 Document Preview")
         st.text_area("Content preview:", text[:1000] + "..." if len(text) > 1000 else text, height=150)
         
+        # Store in session state for current session use
+        if 'current_document' not in st.session_state:
+            st.session_state.current_document = {}
+        
+        st.session_state.current_document = {
+            'text': text,
+            'filename': uploaded_file.name,
+            'file_type': file_type
+        }
+        
         # Add to knowledge base
         if st.session_state.rag_system:
             metadata = {
@@ -331,7 +422,8 @@ def process_uploaded_document(uploaded_file):
             else:
                 st.error("Failed to add document to knowledge base")
         else:
-            st.warning("RAG system not available - document cannot be added to knowledge base")
+            st.warning("⚠️ RAG system not available - document processed but not stored for future reference")
+            st.info("💡 You can still ask questions about this document in the current session")
             
     except Exception as e:
         st.error(f"Document processing error: {e}")
