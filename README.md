@@ -11,7 +11,28 @@ EmotiBot is an intelligent conversational AI that can understand emotions, proce
 - **Real-time Chat**: Interactive conversation interface
 - **Voice Interaction**: Speech input and output capabilities
 
-## Installation
+## Deployment
+
+### Deploy on Streamlit Cloud
+
+1. **Fork or use this repository** on GitHub
+2. **Go to [Streamlit Cloud](https://share.streamlit.io/)**
+3. **Sign in** with your GitHub account
+4. **Click "New app"**
+5. **Select your repository**: `vanshikaxcx/emotibot`
+6. **Set main file path**: `streamlit_app.py`
+7. **Add secrets** in the Streamlit Cloud dashboard:
+   ```
+   GOOGLE_API_KEY = "your_google_api_key"
+   OPENAI_API_KEY = "your_openai_api_key"
+   SUPABASE_URL = "your_supabase_url"
+   SUPABASE_KEY = "your_supabase_key"
+   ```
+8. **Click "Deploy"**
+
+Your app will be available at: `https://your-app-name.streamlit.app`
+
+### Local Development
 
 1. Clone the repository:
 ```bash

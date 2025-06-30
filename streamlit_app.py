@@ -18,9 +18,9 @@ def main():
     # Sidebar for configuration
     st.sidebar.title("Configuration")
     
-    # Check if environment variables are set
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    openai_api_key = os.getenv("OPENAI_API_KEY")
+    # Check if environment variables are set (try both .env and Streamlit secrets)
+    google_api_key = os.getenv("GOOGLE_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
     
     if not google_api_key:
         st.error("❌ Google API Key not found. Please set GOOGLE_API_KEY in your .env file.")
